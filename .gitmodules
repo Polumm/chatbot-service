@@ -1,3 +1,0 @@
-[submodule "services/chatbot-service"]
-	path = services/chatbot-service
-	url = git@github.com:Polumm/chatbot-service.git
