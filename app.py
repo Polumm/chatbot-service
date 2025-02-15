@@ -9,11 +9,14 @@ def chat():
     user_message = data.get("message", "")
     session_id = data.get("session_id", "")
 
-    # Simple mock response logic (Replace this with an actual AI model)
-    response = "I'm your bot, responding to: " + user_message
+    if not user_message:
+        return jsonify({"response": "I didn't understand that."})
 
-    return jsonify({"response": response})
+    # Mock bot response
+    bot_reply = f"I'm your bot, responding to: {user_message}"
+
+    return jsonify({"response": bot_reply})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)  # Runs on localhost:5001
+    app.run(host="0.0.0.0", port=5001)
