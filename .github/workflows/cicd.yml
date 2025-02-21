@@ -57,7 +57,7 @@ jobs:
             docker pull ghcr.io/$REPO_NAME/chatbot-service:latest
 
             echo "🔹 Running new container..."
-            docker run -d --name chatbot-service -p 5001:5001 ghcr.io/$REPO_NAME/chatbot-service:latest
+            docker run -d --name chatbot-service -p 6002:6002 ghcr.io/$REPO_NAME/chatbot-service:latest
 
             echo "✅ Deployment complete!"
             exit 0
