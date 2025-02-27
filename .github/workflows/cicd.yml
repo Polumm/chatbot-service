@@ -16,6 +16,8 @@ env:
   SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
   SERVER_KEY: ${{ secrets.SERVER_KEY }}
   GHCR_USER: ${{ github.repository_owner }}  
+  CHATBOT_URL: ${{ secrets.CHATBOT_URL }}
+  DB_SERVICE_URL: ${{ secrets.DB_SERVICE_URL }}
 
 jobs:
   build-and-push-api:
@@ -48,16 +50,35 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            echo "🔹 Stopping existing container (if running)..."
-            docker stop chatbot-service || true  
-            docker rm chatbot-service || true   
+            az container delete \
+              --resource-group sse-cloud-lab \
+              --name chatbot-services \
+              --yes
 
-            echo "🔹 Pulling latest Docker image..."
-            docker pull ghcr.io/$REPO_NAME/chatbot-service:latest
+            az container create \
+              --resource-group sse-cloud-lab \
+              --name chatbot-services \
+              --image ghcr.io/polumm/chatbot-service:latest \
+              --os-type Linux \
+              --cpu 1 \
+              --memory 1.5 \
+              --dns-name-label chatbot-services \
+              --ports 6002 \
+              --environment-variables \
+                DB_SERVICE_URL="${{ secrets.DB_SERVICE_URL }}" \
+                CHATBOT_URL="${{ secrets.CHATBOT_URL }}"
 
-            echo "🔹 Running new container..."
-            docker run -d --name chatbot-service -p 6002:6002 ghcr.io/$REPO_NAME/chatbot-service:latest
+
+            # REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            # echo "🔹 Stopping existing container (if running)..."
+            # docker stop chatbot-service || true  
+            # docker rm chatbot-service || true   
+
+            # echo "🔹 Pulling latest Docker image..."
+            # docker pull ghcr.io/$REPO_NAME/chatbot-service:latest
+
+            # echo "🔹 Running new container..."
+            # docker run -d --name chatbot-service -p 6002:6002 ghcr.io/$REPO_NAME/chatbot-service:latest
 
             echo "✅ Deployment complete!"
             exit 0
