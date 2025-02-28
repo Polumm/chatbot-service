@@ -50,11 +50,11 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            az container delete \
-              --resource-group sse-cloud-lab \
-              --name chatbot-services \
-              --yes
+            echo "🔹 Stopping and deleting existing container..."
+            az container stop --resource-group sse-cloud-lab --name chatbot-services || true
+            az container delete --resource-group sse-cloud-lab --name chatbot-services --yes || true
 
+            echo "🔹 Pulling and deploying latest image..."
             az container create \
               --resource-group sse-cloud-lab \
               --name chatbot-services \
@@ -68,17 +68,5 @@ jobs:
                 DB_SERVICE_URL="${{ secrets.DB_SERVICE_URL }}" \
                 CHATBOT_URL="${{ secrets.CHATBOT_URL }}"
 
-
-            # REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            # echo "🔹 Stopping existing container (if running)..."
-            # docker stop chatbot-service || true  
-            # docker rm chatbot-service || true   
-
-            # echo "🔹 Pulling latest Docker image..."
-            # docker pull ghcr.io/$REPO_NAME/chatbot-service:latest
-
-            # echo "🔹 Running new container..."
-            # docker run -d --name chatbot-service -p 6002:6002 ghcr.io/$REPO_NAME/chatbot-service:latest
-
-            echo "✅ Deployment complete!"
+            echo "✅ Deployment successful!"
             exit 0
