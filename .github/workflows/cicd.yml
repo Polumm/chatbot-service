@@ -51,7 +51,6 @@ jobs:
           key: ${{ secrets.SERVER_KEY }}
           script: |
             echo "🔹 Stopping and deleting existing container..."
-            az container stop --resource-group sse-cloud-lab --name chatbot-services || true
             az container delete --resource-group sse-cloud-lab --name chatbot-services --yes || true
 
             echo "🔹 Pulling and deploying latest image..."
