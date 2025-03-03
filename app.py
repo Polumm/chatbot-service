@@ -1,39 +1,168 @@
-from flask import Flask, request, jsonify
+import os
+import requests
+import google.generativeai as genai
+from flask import Flask, request, jsonify, session
+from dotenv import load_dotenv
+
+# Load API Key from .env
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DB_SERVICE_URL = os.getenv("DB_SERVICE_URL")  # Your Database Service URL
+
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
 
 app = Flask(__name__)
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    """
+    Handles chatbot conversation for movie night planning.
+    """
     data = request.json
-    user_message = data.get("message", "")
+    user_message = data.get("message", "").lower()
     session_id = data.get("session_id", "")
+    conversation_state = data.get("conversation_state", {})
 
-    if not user_message:
-        return jsonify(
-            {"response_type": "text", "response": "I didn't understand that."}
+    # ✅ Get User ID from session (Make sure user is logged in)
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"response_type": "text", "response": "You need to log in first."}), 401
+
+    # ✅ Step 1: Ask for Friends Selection (Max 3)
+    if "step" not in conversation_state:
+        conversation_state["step"] = "select_friends"
+
+        # ✅ Fetch friends from database
+        try:
+            friends_resp = requests.get(f"{DB_SERVICE_URL}/friends?user_id={user_id}", timeout=5)
+            if friends_resp.status_code == 200:
+                friends_list = friends_resp.json().get("friends", [])
+            else:
+                return jsonify({"response_type": "text", "response": "Error fetching friends list from database."})
+        except requests.exceptions.RequestException:
+            return jsonify({"response_type": "text", "response": "Database service unavailable."})
+
+        return jsonify({
+            "response_type": "multiple_choice",
+            "prompt": "Which friends do you want to have a movie night with? (Select up to 3)",
+            "options": [friend["username"] for friend in friends_list],
+            "conversation_state": conversation_state
+        })
+
+    # ✅ Step 2: Retrieve Friends' Saved Movies and Extract Available Genres
+    elif conversation_state["step"] == "select_friends":
+        conversation_state["friends"] = user_message.split(", ")
+        conversation_state["step"] = "fetch_movies"
+
+        # ✅ Retrieve saved movies from the selected friends and user
+        try:
+            selected_friends = ",".join(conversation_state["friends"])
+            movies_resp = requests.get(
+                f"{DB_SERVICE_URL}/movies/list?user_id={user_id}&friends={selected_friends}",
+                timeout=5
+            )
+
+            if movies_resp.status_code == 200:
+                saved_movies = movies_resp.json().get("saved_movies", [])
+            else:
+                return jsonify({"response_type": "text", "response": "Could not fetch saved movies."})
+
+            if not saved_movies:
+                return jsonify({
+                    "response_type": "text",
+                    "response": "None of your friends have saved movies. Try selecting different friends or adding movies to your list.",
+                    "conversation_state": conversation_state
+                })
+
+            # ✅ Extract unique genres (If Not Stored in DB, Fetch From TMDB)
+            available_genres = list(set(movie.get("genre", "Unknown") for movie in saved_movies))
+
+            conversation_state["movies"] = saved_movies
+            conversation_state["genres"] = available_genres
+            conversation_state["step"] = "select_genre"
+
+            return jsonify({
+                "response_type": "multiple_choice",
+                "prompt": "Here are the genres that you and your selected friends have saved movies in. Pick one to watch:",
+                "options": available_genres,
+                "conversation_state": conversation_state
+            })
+
+        except requests.exceptions.RequestException:
+            return jsonify({
+                "response_type": "text",
+                "response": "Error retrieving saved movies from the database.",
+                "conversation_state": conversation_state
+            })
+
+    # ✅ Step 3: Ask for User's Mood
+    elif conversation_state["step"] == "select_genre":
+        conversation_state["genre"] = user_message.capitalize()
+        conversation_state["step"] = "select_mood"
+
+        return jsonify({
+            "response_type": "multiple_choice",
+            "prompt": "What is your mood today?",
+            "options": ["Happy", "Sad", "Excited", "Relaxed"],
+            "conversation_state": conversation_state
+        })
+
+    # ✅ Step 4: Send Data to Gemini for a Movie Recommendation
+    elif conversation_state["step"] == "select_mood":
+        conversation_state["mood"] = user_message.capitalize()
+        conversation_state["step"] = "query_gemini"
+
+        # ✅ Filter movies based on selected genre
+        filtered_movies = [m for m in conversation_state["movies"] if m.get("genre") == conversation_state["genre"]]
+
+        # ✅ Call Gemini for a recommendation
+        recommendation = query_gemini(
+            conversation_state["genre"],
+            conversation_state["mood"],
+            filtered_movies
         )
 
-    # Determine response type based on user message
-    if "color" in user_message.lower():
-        bot_reply = {
-            "response_type": "multiple_choice",
-            "prompt": "Which color do you prefer?",
-            "options": ["Red", "Green", "Blue"],
-        }
-    elif "name" in user_message.lower():
-        bot_reply = {
-            "response_type": "fill_in",
-            "prompt": "What is your name?",
-            "placeholder": "Type your name here...",
-        }
-    else:
-        bot_reply = {
+        return jsonify({
             "response_type": "text",
-            "response": "Hello! I am here to assist you.",
-        }
+            "response": f"Based on your selected genre ({conversation_state['genre']}), your mood ({conversation_state['mood']}), and your friends' saved movies, I recommend: {recommendation}. Enjoy your movie night!",
+            "conversation_state": conversation_state
+        })
 
-    return jsonify(bot_reply)
+    return jsonify({"response_type": "text", "response": "I didn't understand that."})
+
+
+def query_gemini(genre, mood, movies):
+    """
+    Sends the genre, mood, and saved movies to Gemini API for a movie recommendation.
+    Only recommends movies from the provided list.
+    """
+    if not movies:
+        return "There are no saved movies in this genre among your selected friends. Try choosing another genre or different friends."
+
+    # ✅ Format movies properly for Gemini prompt
+    movie_list_text = "\n".join([f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies])
+
+    prompt = f"""
+    You are a movie recommendation assistant.
+    A group of friends is planning a movie night.
+    
+    - Genre: {genre}
+    - Mood: {mood}
+    - Available Movies:
+      {movie_list_text}
+
+    Recommend **one movie** from the list that best matches the mood.
+    Respond with **only the movie title** and a short tagline.
+    """
+
+    try:
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return "Error contacting Gemini. Try again later."
 
 
 if __name__ == "__main__":
