@@ -28,7 +28,9 @@ def chat():
     # ✅ Get User ID from session (Make sure user is logged in)
     user_id = session.get("user_id")
     if not user_id:
-        return jsonify({"response_type": "text", "response": "You need to log in first."}), 401
+        return jsonify(
+            {"response_type": "text", "response": "You need to log in first."}
+        ), 401
 
     # ✅ Step 1: Ask for Friends Selection (Max 3)
     if "step" not in conversation_state:
@@ -36,20 +38,34 @@ def chat():
 
         # ✅ Fetch friends from database
         try:
-            friends_resp = requests.get(f"{DB_SERVICE_URL}/friends?user_id={user_id}", timeout=5)
+            friends_resp = requests.get(
+                f"{DB_SERVICE_URL}/friends?user_id={user_id}", timeout=5
+            )
             if friends_resp.status_code == 200:
                 friends_list = friends_resp.json().get("friends", [])
             else:
-                return jsonify({"response_type": "text", "response": "Error fetching friends list from database."})
+                return jsonify(
+                    {
+                        "response_type": "text",
+                        "response": "Error fetching friends list from database.",
+                    }
+                )
         except requests.exceptions.RequestException:
-            return jsonify({"response_type": "text", "response": "Database service unavailable."})
+            return jsonify(
+                {
+                    "response_type": "text",
+                    "response": "Database service unavailable.",
+                }
+            )
 
-        return jsonify({
-            "response_type": "multiple_choice",
-            "prompt": "Which friends do you want to have a movie night with? (Select up to 3)",
-            "options": [friend["username"] for friend in friends_list],
-            "conversation_state": conversation_state
-        })
+        return jsonify(
+            {
+                "response_type": "multiple_choice",
+                "prompt": "Which friends do you want to have a movie night with? (Select up to 3)",
+                "options": [friend["username"] for friend in friends_list],
+                "conversation_state": conversation_state,
+            }
+        )
 
     # ✅ Step 2: Retrieve Friends' Saved Movies and Extract Available Genres
     elif conversation_state["step"] == "select_friends":
@@ -61,53 +77,68 @@ def chat():
             selected_friends = ",".join(conversation_state["friends"])
             movies_resp = requests.get(
                 f"{DB_SERVICE_URL}/movies/list?user_id={user_id}&friends={selected_friends}",
-                timeout=5
+                timeout=5,
             )
 
             if movies_resp.status_code == 200:
                 saved_movies = movies_resp.json().get("saved_movies", [])
             else:
-                return jsonify({"response_type": "text", "response": "Could not fetch saved movies."})
+                return jsonify(
+                    {
+                        "response_type": "text",
+                        "response": "Could not fetch saved movies.",
+                    }
+                )
 
             if not saved_movies:
-                return jsonify({
-                    "response_type": "text",
-                    "response": "None of your friends have saved movies. Try selecting different friends or adding movies to your list.",
-                    "conversation_state": conversation_state
-                })
+                return jsonify(
+                    {
+                        "response_type": "text",
+                        "response": "None of your friends have saved movies. Try selecting different friends or adding movies to your list.",
+                        "conversation_state": conversation_state,
+                    }
+                )
 
             # ✅ Extract unique genres (If Not Stored in DB, Fetch From TMDB)
-            available_genres = list(set(movie.get("genre", "Unknown") for movie in saved_movies))
+            available_genres = list(
+                set(movie.get("genre", "Unknown") for movie in saved_movies)
+            )
 
             conversation_state["movies"] = saved_movies
             conversation_state["genres"] = available_genres
             conversation_state["step"] = "select_genre"
 
-            return jsonify({
-                "response_type": "multiple_choice",
-                "prompt": "Here are the genres that you and your selected friends have saved movies in. Pick one to watch:",
-                "options": available_genres,
-                "conversation_state": conversation_state
-            })
+            return jsonify(
+                {
+                    "response_type": "multiple_choice",
+                    "prompt": "Here are the genres that you and your selected friends have saved movies in. Pick one to watch:",
+                    "options": available_genres,
+                    "conversation_state": conversation_state,
+                }
+            )
 
         except requests.exceptions.RequestException:
-            return jsonify({
-                "response_type": "text",
-                "response": "Error retrieving saved movies from the database.",
-                "conversation_state": conversation_state
-            })
+            return jsonify(
+                {
+                    "response_type": "text",
+                    "response": "Error retrieving saved movies from the database.",
+                    "conversation_state": conversation_state,
+                }
+            )
 
     # ✅ Step 3: Ask for User's Mood
     elif conversation_state["step"] == "select_genre":
         conversation_state["genre"] = user_message.capitalize()
         conversation_state["step"] = "select_mood"
 
-        return jsonify({
-            "response_type": "multiple_choice",
-            "prompt": "What is your mood today?",
-            "options": ["Happy", "Sad", "Excited", "Relaxed"],
-            "conversation_state": conversation_state
-        })
+        return jsonify(
+            {
+                "response_type": "multiple_choice",
+                "prompt": "What is your mood today?",
+                "options": ["Happy", "Sad", "Excited", "Relaxed"],
+                "conversation_state": conversation_state,
+            }
+        )
 
     # ✅ Step 4: Send Data to Gemini for a Movie Recommendation
     elif conversation_state["step"] == "select_mood":
@@ -115,22 +146,30 @@ def chat():
         conversation_state["step"] = "query_gemini"
 
         # ✅ Filter movies based on selected genre
-        filtered_movies = [m for m in conversation_state["movies"] if m.get("genre") == conversation_state["genre"]]
+        filtered_movies = [
+            m
+            for m in conversation_state["movies"]
+            if m.get("genre") == conversation_state["genre"]
+        ]
 
         # ✅ Call Gemini for a recommendation
         recommendation = query_gemini(
             conversation_state["genre"],
             conversation_state["mood"],
-            filtered_movies
+            filtered_movies,
         )
 
-        return jsonify({
-            "response_type": "text",
-            "response": f"Based on your selected genre ({conversation_state['genre']}), your mood ({conversation_state['mood']}), and your friends' saved movies, I recommend: {recommendation}. Enjoy your movie night!",
-            "conversation_state": conversation_state
-        })
+        return jsonify(
+            {
+                "response_type": "text",
+                "response": f"Based on your selected genre ({conversation_state['genre']}), your mood ({conversation_state['mood']}), and your friends' saved movies, I recommend: {recommendation}. Enjoy your movie night!",
+                "conversation_state": conversation_state,
+            }
+        )
 
-    return jsonify({"response_type": "text", "response": "I didn't understand that."})
+    return jsonify(
+        {"response_type": "text", "response": "I didn't understand that."}
+    )
 
 
 def query_gemini(genre, mood, movies):
@@ -142,7 +181,9 @@ def query_gemini(genre, mood, movies):
         return "There are no saved movies in this genre among your selected friends. Try choosing another genre or different friends."
 
     # ✅ Format movies properly for Gemini prompt
-    movie_list_text = "\n".join([f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies])
+    movie_list_text = "\n".join(
+        [f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies]
+    )
 
     prompt = f"""
     You are a movie recommendation assistant.
