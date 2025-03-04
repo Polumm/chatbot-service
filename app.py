@@ -1,41 +1,62 @@
+from flask import Flask, request, jsonify
 import os
-import requests
 import google.generativeai as genai
-from flask import Flask, request, jsonify, session
+import jwt  # Import JWT for verification
 from dotenv import load_dotenv
+import requests
 
 # Load API Key from .env
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DB_SERVICE_URL = os.getenv("DB_SERVICE_URL")  # Your Database Service URL
+SECRET_KEY = os.getenv("SECRET_KEY")  # Make sure the secret key is the same as the main app
+DB_SERVICE_URL = os.getenv("DB_SERVICE_URL")
+
+if not DB_SERVICE_URL:
+    raise ValueError("Missing DB_SERVICE_URL in environment variables")
 
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
 app = Flask(__name__)
 
+def verify_jwt(token):
+    """Verify JWT token"""
+    try:
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return decoded
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
 
 @app.route("/chat", methods=["POST"])
 def chat():
     """
     Handles chatbot conversation for movie night planning.
     """
+    # ✅ Get token from request headers
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
+
+    if not token or not verify_jwt(token):
+        return jsonify({"response_type": "text", "response": "Unauthorized: Invalid or missing token."}), 401
+
+    # ✅ Token is valid, continue processing
     data = request.json
     user_message = data.get("message", "").lower()
     session_id = data.get("session_id", "")
     conversation_state = data.get("conversation_state", {})
 
-    # ✅ Get User ID from session (Make sure user is logged in)
-    user_id = session.get("user_id")
+    # ✅ Retrieve user ID from token
+    decoded_token = verify_jwt(token)
+    user_id = decoded_token.get("username")
+
     if not user_id:
-        return jsonify(
-            {"response_type": "text", "response": "You need to log in first."}
-        ), 401
+        return jsonify({"response_type": "text", "response": "Unauthorized: Missing user information."}), 401
 
     # ✅ Step 1: Ask for Friends Selection (Max 3)
     if "step" not in conversation_state:
         conversation_state["step"] = "select_friends"
-
         # ✅ Fetch friends from database
         try:
             friends_resp = requests.get(
