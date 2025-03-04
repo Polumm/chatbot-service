@@ -5,6 +5,7 @@ services:
     build:
     ports:
       - "6002:6002"
-    # environment:
+    environment:
+    - SECRET_KEY: ${{ secrets.SECRET_KEY }}
     #   - FLASK_ENV=development
     restart: always

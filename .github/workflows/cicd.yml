@@ -18,6 +18,7 @@ env:
   GHCR_USER: ${{ github.repository_owner }}  
   CHATBOT_URL: ${{ secrets.CHATBOT_URL }}
   DB_SERVICE_URL: ${{ secrets.DB_SERVICE_URL }}
+  SECRET_KEY: ${{ secrets.SECRET_KEY }}
 
 jobs:
   build-and-push-api:
@@ -36,7 +37,7 @@ jobs:
       - name: Build and Push API Server
         run: |
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          docker buildx build --platform linux/amd64 -t ghcr.io/$REPO_NAME/chatbot-service:latest --push .
+          docker buildx build --platform linux/amd64 --build-arg SECRET_KEY=${{ secrets.SECRET_KEY }} -t ghcr.io/$REPO_NAME/chatbot-service:latest --push .
 
   deploy-api:
     runs-on: ubuntu-latest
@@ -65,6 +66,7 @@ jobs:
               --ports 6002 \
               --environment-variables \
                 DB_SERVICE_URL="${{ secrets.DB_SERVICE_URL }}" \
+                SECRET_KEY="${{ secrets.SECRET_KEY }}" \
                 CHATBOT_URL="${{ secrets.CHATBOT_URL }}"
 
             echo "✅ Deployment successful!"
