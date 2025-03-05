@@ -286,13 +286,16 @@ def query_gemini(genre, mood, movie_names):
     Recommend one movie from the list.
     """
     try:
-        # Initialize the Gemini model using the langchain wrapper.
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from pydantic import SecretStr
+        import os
+
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",  # or another supported model
             api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
         )
-        # Call the model to generate a recommendation.
-        response = llm.predict(prompt)
+        # Use the new invoke method
+        response = llm.invoke(prompt)
         return response
     except Exception as e:
         print("Gemini error:", e)
