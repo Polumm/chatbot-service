@@ -26,3 +26,5 @@ WTForms==3.2.1
 requests
 google-generativeai
 dotenv
+PyJWT
+langchain_google_genai
