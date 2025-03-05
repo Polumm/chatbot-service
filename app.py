@@ -8,7 +8,7 @@ import requests
 # Load API Key from .env
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-SECRET_KEY = os.getenv("SECRET_KEY")  # Make sure the secret key is the same as the main app
+SECRET_KEY = os.getenv("SECRET_KEY")  # Ensure it matches the main app
 DB_SERVICE_URL = os.getenv("DB_SERVICE_URL")
 
 if not DB_SERVICE_URL:
@@ -34,13 +34,9 @@ def verify_jwt(token):
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """
-    Handles chatbot conversation for movie night planning.
-    """
-    # ✅ Get token from request headers
+    # ✅ Get token
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
-
     print(f"🟡 Debug: Received token: {token}")
 
     if not token or not verify_jwt(token):
@@ -48,92 +44,88 @@ def chat():
 
     # ✅ Token is valid, continue processing
     data = request.json
-    user_message = data.get("message", "").lower()
+    user_message = data.get("message", "").strip().lower()
     session_id = data.get("session_id", "")
     conversation_state = data.get("conversation_state", {})
 
-    # ✅ Retrieve user ID from token
-    decoded_token = verify_jwt(token)
+    print(f"🟡 Debug: Received conversation state → {conversation_state}")
+    print(f"🟡 Debug: Received user message → {user_message}")
 
+    # ✅ Retrieve user ID
+    decoded_token = verify_jwt(token)
     if not decoded_token:
         return jsonify({"response_type": "text", "response": "Unauthorized: Invalid token."}), 401
 
-    user_id = decoded_token.get("user_id")  # ✅ Ensure user_id is extracted correctly
+    user_id = decoded_token.get("user_id")  
     print(f"✅ Debug: Authenticated as user_id: {user_id}")
 
     if not user_id:
         return jsonify({"response_type": "text", "response": "Unauthorized: Missing user information."}), 401
 
-    # ✅ Step 1: Ask for Friends Selection (Max 3)
+    # ✅ Step 1: Ask for Friends Selection
     if "step" not in conversation_state:
         conversation_state["step"] = "select_friends"
-        # ✅ Fetch friends from database
+        print(f"🟡 Debug: Asking user to select friends...")
+
         try:
-            friends_resp = requests.get(
-                f"{DB_SERVICE_URL}/friends/list?user_id={user_id}", timeout=5
-            )
+            friends_resp = requests.get(f"{DB_SERVICE_URL}/friends/list?user_id={user_id}", timeout=5)
             if friends_resp.status_code == 200:
                 friends_list = friends_resp.json().get("friends", [])
             else:
-                return jsonify(
-                    {
-                        "response_type": "text",
-                        "response": "Error fetching friends list from database.",
-                    }
-                )
+                return jsonify({"response_type": "text", "response": "Error fetching friends list from database."})
         except requests.exceptions.RequestException:
-            return jsonify(
-                {
-                    "response_type": "text",
-                    "response": "Database service unavailable.",
-                }
-            )
+            return jsonify({"response_type": "text", "response": "Database service unavailable."})
 
         return jsonify(
             {
                 "response_type": "multiple_choice",
-                "prompt": "Which friends do you want to have a movie night with? (Select up to 3)",
+                "prompt": "Which friends do you want to have a movie night with? (Select 1-5)",
                 "options": [friend["username"] for friend in friends_list],
-                "conversation_state": conversation_state,
+                "conversation_state": conversation_state,  # ✅ Return updated state
             }
         )
 
-    # ✅ Step 2: Retrieve Friends' Saved Movies and Extract Available Genres
-    elif conversation_state["step"] == "select_friends":
-        conversation_state["friends"] = user_message.split(", ")
-        conversation_state["step"] = "fetch_movies"
+    # ✅ Step 2: Process Friend Selection
+    elif conversation_state.get("step") == "select_friends":  # ✅ Fix here
+        print(f"🟡 Debug: Processing friend selection...")
+        print(f"🟡 Debug: Raw user message → {user_message}")
 
-        # ✅ Retrieve saved movies from the selected friends and user
+        selected_friends = [f.strip() for f in user_message.split(",") if f.strip()]
+        print(f"✅ Debug: Processed selected friends → {selected_friends}")
+
+        if len(selected_friends) > 5:
+            return jsonify({
+                "response_type": "text",
+                "response": "You can select up to 5 friends. Please try again.",
+                "conversation_state": conversation_state,
+            })
+
+        conversation_state["friends"] = selected_friends  
+        conversation_state["step"] = "fetch_movies"  # ✅ Ensure next step is set
+
+        print(f"✅ Debug: Friends selected → {conversation_state['friends']}")
+
+        return jsonify({
+            "response_type": "text",
+            "response": f"Got it! Fetching movies saved by: {', '.join(conversation_state['friends'])}.",
+            "conversation_state": conversation_state,  # ✅ Return updated state
+        })
+
+    # ✅ Step 3: Fetch Movies & Genres
+    elif conversation_state.get("step") == "fetch_movies":
         try:
-            selected_friends = ",".join(conversation_state["friends"])
-            movies_resp = requests.get(
-                f"{DB_SERVICE_URL}/movies/list?user_id={user_id}&friends={selected_friends}",
-                timeout=5,
-            )
+            selected_friends_param = ",".join(conversation_state["friends"])
+            movies_resp = requests.get(f"{DB_SERVICE_URL}/movies/list?user_id={user_id}&friends={selected_friends_param}", timeout=5)
 
             if movies_resp.status_code == 200:
                 saved_movies = movies_resp.json().get("saved_movies", [])
             else:
-                return jsonify(
-                    {
-                        "response_type": "text",
-                        "response": "Could not fetch saved movies.",
-                    }
-                )
+                return jsonify({"response_type": "text", "response": "Could not fetch saved movies."})
 
             if not saved_movies:
-                return jsonify(
-                    {
-                        "response_type": "text",
-                        "response": "None of your friends have saved movies. Try selecting different friends or adding movies to your list.",
-                        "conversation_state": conversation_state,
-                    }
-                )
+                return jsonify({"response_type": "text", "response": "None of your friends have saved movies. Try selecting different friends or adding movies to your list."})
 
-            # ✅ Extract unique genres (If Not Stored in DB, Fetch From TMDB)
-            available_genres = list(
-                set(movie.get("genre", "Unknown") for movie in saved_movies)
-            )
+            available_genres = list(set(movie.get("genre", "Unknown") for movie in saved_movies))
 
             conversation_state["movies"] = saved_movies
             conversation_state["genres"] = available_genres
@@ -149,13 +141,7 @@ def chat():
             )
 
         except requests.exceptions.RequestException:
-            return jsonify(
-                {
-                    "response_type": "text",
-                    "response": "Error retrieving saved movies from the database.",
-                    "conversation_state": conversation_state,
-                }
-            )
+            return jsonify({"response_type": "text", "response": "Error retrieving saved movies from the database."})
 
     # ✅ Step 3: Ask for User's Mood
     elif conversation_state["step"] == "select_genre":
@@ -176,19 +162,9 @@ def chat():
         conversation_state["mood"] = user_message.capitalize()
         conversation_state["step"] = "query_gemini"
 
-        # ✅ Filter movies based on selected genre
-        filtered_movies = [
-            m
-            for m in conversation_state["movies"]
-            if m.get("genre") == conversation_state["genre"]
-        ]
+        filtered_movies = [m for m in conversation_state["movies"] if m.get("genre") == conversation_state["genre"]]
 
-        # ✅ Call Gemini for a recommendation
-        recommendation = query_gemini(
-            conversation_state["genre"],
-            conversation_state["mood"],
-            filtered_movies,
-        )
+        recommendation = query_gemini(conversation_state["genre"], conversation_state["mood"], filtered_movies)
 
         return jsonify(
             {
@@ -198,44 +174,33 @@ def chat():
             }
         )
 
-    return jsonify(
-        {"response_type": "text", "response": "I didn't understand that."}
-    )
+    return jsonify({"response_type": "text", "response": "I didn't understand that."})
 
 
 def query_gemini(genre, mood, movies):
-    """
-    Sends the genre, mood, and saved movies to Gemini API for a movie recommendation.
-    Only recommends movies from the provided list.
-    """
     if not movies:
-        return "There are no saved movies in this genre among your selected friends. Try choosing another genre or different friends."
+        return "There are no saved movies in this genre among your selected friends."
 
-    # ✅ Format movies properly for Gemini prompt
-    movie_list_text = "\n".join(
-        [f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies]
-    )
+    movie_list_text = "\n".join([f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies])
 
     prompt = f"""
     You are a movie recommendation assistant.
     A group of friends is planning a movie night.
-    
+
     - Genre: {genre}
     - Mood: {mood}
     - Available Movies:
       {movie_list_text}
 
-    Recommend **one movie** from the list that best matches the mood.
-    Respond with **only the movie title** and a short tagline.
+    Recommend one movie from the list.
     """
 
     try:
         model = genai.GenerativeModel("gemini-pro")
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
-        return "Error contacting Gemini. Try again later."
-
+    except Exception:
+        return "Error contacting Gemini."
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6002, debug=True)
