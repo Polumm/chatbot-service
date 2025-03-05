@@ -6,8 +6,8 @@ services:
     ports:
       - "6002:6002"
     environment:
+      - FLASK_ENV=deployment
       - SECRET_KEY: ${{ secrets.SECRET_KEY }}
       - DB_SERVICE_URL: ${{ secrets.DB_SERVICE_URL }}
       - GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    #   - FLASK_ENV=development
     restart: always
