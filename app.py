@@ -23,10 +23,13 @@ def verify_jwt(token):
     """Verify JWT token"""
     try:
         decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        print(f"✅ Debug: Token decoded successfully! {decoded}")
         return decoded
     except jwt.ExpiredSignatureError:
+        print("❌ Debug: Token expired!")
         return None
     except jwt.InvalidTokenError:
+        print("❌ Debug: Invalid token!")
         return None
 
 @app.route("/chat", methods=["POST"])
@@ -37,6 +40,8 @@ def chat():
     # ✅ Get token from request headers
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
+
+    print(f"🟡 Debug: Received token: {token}")
 
     if not token or not verify_jwt(token):
         return jsonify({"response_type": "text", "response": "Unauthorized: Invalid or missing token."}), 401
@@ -49,7 +54,12 @@ def chat():
 
     # ✅ Retrieve user ID from token
     decoded_token = verify_jwt(token)
-    user_id = decoded_token.get("username")
+
+    if not decoded_token:
+        return jsonify({"response_type": "text", "response": "Unauthorized: Invalid token."}), 401
+
+    user_id = decoded_token.get("user_id")  # ✅ Ensure user_id is extracted correctly
+    print(f"✅ Debug: Authenticated as user_id: {user_id}")
 
     if not user_id:
         return jsonify({"response_type": "text", "response": "Unauthorized: Missing user information."}), 401
@@ -60,7 +70,7 @@ def chat():
         # ✅ Fetch friends from database
         try:
             friends_resp = requests.get(
-                f"{DB_SERVICE_URL}/friends?user_id={user_id}", timeout=5
+                f"{DB_SERVICE_URL}/friends/list?user_id={user_id}", timeout=5
             )
             if friends_resp.status_code == 200:
                 friends_list = friends_resp.json().get("friends", [])
