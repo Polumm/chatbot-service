@@ -19,6 +19,7 @@ env:
   CHATBOT_URL: ${{ secrets.CHATBOT_URL }}
   DB_SERVICE_URL: ${{ secrets.DB_SERVICE_URL }}
   SECRET_KEY: ${{ secrets.SECRET_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
 jobs:
   build-and-push-api:
@@ -37,7 +38,14 @@ jobs:
       - name: Build and Push API Server
         run: |
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          docker buildx build --platform linux/amd64 --build-arg SECRET_KEY=${{ secrets.SECRET_KEY }} -t ghcr.io/$REPO_NAME/chatbot-service:latest --push .
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg SECRET_KEY=${{ secrets.SECRET_KEY }} \
+            --build-arg DB_SERVICE_URL=${{ secrets.DB_SERVICE_URL }} \
+            --build-arg GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+            -t ghcr.io/$REPO_NAME/chatbot-service:latest \
+            --push .
+
 
   deploy-api:
     runs-on: ubuntu-latest
@@ -67,7 +75,7 @@ jobs:
               --environment-variables \
                 DB_SERVICE_URL="${{ secrets.DB_SERVICE_URL }}" \
                 SECRET_KEY="${{ secrets.SECRET_KEY }}" \
-                CHATBOT_URL="${{ secrets.CHATBOT_URL }}"
+                GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
 
             echo "✅ Deployment successful!"
             exit 0
