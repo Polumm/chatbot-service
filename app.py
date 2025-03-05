@@ -1,8 +1,5 @@
 from flask import Flask, request, jsonify, session
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import SecretStr
-import os
 import jwt  # Import JWT for verification
 from dotenv import load_dotenv
 import requests
