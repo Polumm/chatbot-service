@@ -3,3 +3,4 @@ app/__pycache__
 .venv
 .venv-cb-client
 .venv-cb-service
+.env
