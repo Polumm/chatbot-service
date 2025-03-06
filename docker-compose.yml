@@ -2,12 +2,12 @@ version: "3.8"
 
 services:
   chatbot-service:
-    build:
+    build: .
     ports:
       - "6002:6002"
     environment:
       - FLASK_ENV=deployment
-      - SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      - DB_SERVICE_URL: ${{ secrets.DB_SERVICE_URL }}
-      - GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - SECRET_KEY=${{ secrets.SECRET_KEY }}
+      - DB_SERVICE_URL=${{ secrets.DB_SERVICE_URL }}
+      - GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
     restart: always
