@@ -123,7 +123,7 @@ def chat():
             )
         response_json = {
             "response_type": "multiple_choice",
-            "prompt": "Conversation reset. Which friends do you want to have a movie night with? (Select 1-5)",
+            "prompt": "Conversation reset. Which friend do you want to have a movie night with?",
             "options": [friend["username"] for friend in friends_list],
         }
         session.modified = True
@@ -272,6 +272,7 @@ def chat():
 def query_gemini(genre, mood, movie_names):
     if not movie_names:
         return "There are no saved movies among your selected friends."
+    
     movie_list_text = "\n".join([f"- {name}" for name in movie_names])
     prompt = f"""
     You are a movie recommendation assistant.
@@ -281,23 +282,39 @@ def query_gemini(genre, mood, movie_names):
     - Some Movies they already seen and liked (find some other movies they might like):
       {movie_list_text}
     Recommend one movie from the list.
+    Respond with only the movie title in bold, followed by a short tagline.
+    Example:
+    **Movie Title (Year)** - "Tagline of the movie"
     """
+
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from pydantic import SecretStr
         import os
+        import re
 
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",  # or another supported model
             api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
         )
-        # Use the new invoke method
+
         response = llm.invoke(prompt)
-        return response
+
+        # ✅ Extract only the movie title and tagline using regex
+        recommendation_text = response.content if hasattr(response, 'content') else str(response)
+
+        # Use regex to extract the first movie title
+        match = re.search(r"\*\*(.*?)\*\*", recommendation_text)  # Find text between ** **
+        if match:
+            movie_title = match.group(1)
+        else:
+            movie_title = recommendation_text.split("\n")[0]  # Fallback: first line
+
+        return movie_title.strip()  # ✅ Return only the clean movie title
+
     except Exception as e:
         print("Gemini error:", e)
         return "Sorry, I couldn't generate a recommendation at this time. Please try again later."
-
-
+    
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6002, debug=True)
