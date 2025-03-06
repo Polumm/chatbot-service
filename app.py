@@ -123,7 +123,7 @@ def chat():
             )
         response_json = {
             "response_type": "multiple_choice",
-            "prompt": "Conversation reset. Which friend do you want to have a movie night with?",
+            "prompt": "Which friends do you want to have a movie night with? (Select up to 3)",
             "options": [friend["username"] for friend in friends_list],
         }
         session.modified = True
@@ -269,11 +269,17 @@ def chat():
     return jsonify(response_json)
 
 
-def query_gemini(genre, mood, movie_names):
-    if not movie_names:
-        return "There are no saved movies among your selected friends."
-    
-    movie_list_text = "\n".join([f"- {name}" for name in movie_names])
+def query_gemini(genre, mood, movies):
+    """
+    Sends the genre, mood, and saved movies to Gemini API for a movie recommendation.
+    Only recommends movies from the provided list.
+    """
+    if not movies:
+        return "There are no saved movies in this genre among your selected friends. Try choosing another genre or different friends."
+
+    # ✅ Format movies properly for Gemini prompt
+    movie_list_text = "\n".join([f"- {m['title']} ({m.get('genre', 'Unknown')})" for m in movies])
+
     prompt = f"""
     You are a movie recommendation assistant.
     A group of friends is planning a movie night.
@@ -281,40 +287,18 @@ def query_gemini(genre, mood, movie_names):
     - Mood: {mood}
     - Some Movies they already seen and liked (find some other movies they might like):
       {movie_list_text}
-    Recommend one movie from the list.
-    Respond with only the movie title in bold, followed by a short tagline.
-    Example:
-    **Movie Title (Year)** - "Tagline of the movie"
+
+    Recommend **one movie** from the list that best matches the mood.
+    Respond with **only the movie title** and a short tagline.
     """
 
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from pydantic import SecretStr
-        import os
-        import re
-
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",  # or another supported model
-            api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
-        )
-
-        response = llm.invoke(prompt)
-
-        # ✅ Extract only the movie title and tagline using regex
-        recommendation_text = response.content if hasattr(response, 'content') else str(response)
-
-        # Use regex to extract the first movie title
-        match = re.search(r"\*\*(.*?)\*\*", recommendation_text)  # Find text between ** **
-        if match:
-            movie_title = match.group(1)
-        else:
-            movie_title = recommendation_text.split("\n")[0]  # Fallback: first line
-
-        return movie_title.strip()  # ✅ Return only the clean movie title
-
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        print("Gemini error:", e)
-        return "Sorry, I couldn't generate a recommendation at this time. Please try again later."
-    
+        return "Error contacting Gemini. Try again later."
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6002, debug=True)
